@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DHパラメータ可視化アプリケーション</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #canvas-container {
+            flex: 1;
+            position: relative;
+        }
+
+        #info-panel {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            z-index: 10;
+        }
+
+        #info-panel h3 {
+            margin-bottom: 8px;
+            font-size: 18px;
+        }
+
+        .axis-legend {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+            font-size: 14px;
+        }
+
+        .axis-color {
+            width: 16px;
+            height: 8px;
+        }
+
+        .axis-color.x { background-color: #ff0000; }
+        .axis-color.y { background-color: #00ff00; }
+        .axis-color.z { background-color: #0000ff; }
+        .axis-color.link { background-color: #888888; }
+
+        #control-panel {
+            width: 320px;
+            background: white;
+            padding: 24px;
+            box-shadow: -2px 0 8px rgba(0,0,0,0.1);
+            overflow-y: auto;
+        }
+
+        #control-panel h2 {
+            margin-bottom: 16px;
+            font-size: 20px;
+            color: #333;
+        }
+
+        .axis-controls {
+            margin-bottom: 16px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .axis-controls button {
+            padding: 8px 16px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .axis-controls button:hover {
+            background: #218838;
+        }
+
+        .axis-controls button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        #remove-axis-button {
+            background: #dc3545;
+        }
+        
+        #remove-axis-button:hover {
+            background: #c82333;
+        }
+
+        .axis-section {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+            background: #f8f9fa;
+        }
+
+        .axis-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .axis-title {
+            font-weight: bold;
+            font-size: 16px;
+            color: #333;
+        }
+
+        .parameter-control {
+            margin-bottom: 16px;
+        }
+
+        .parameter-control label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .parameter-control input[type="range"] {
+            width: 100%;
+            margin-bottom: 4px;
+        }
+
+        .parameter-description {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        .dh-info {
+            background: #f8f9fa;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 24px;
+        }
+
+        .dh-info h3 {
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+
+        .dh-info ol {
+            margin-left: 16px;
+            font-size: 14px;
+        }
+
+        .dh-info li {
+            margin-bottom: 4px;
+        }
+
+        #reset-button {
+            width: 100%;
+            padding: 12px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            margin-top: 24px;
+        }
+
+        #reset-button:hover {
+            background: #0056b3;
+        }
+
+        .controls-info {
+            background: #f8f9fa;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 24px;
+        }
+
+        .controls-info h3 {
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+
+        .controls-info div {
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container">
+        <div id="info-panel">
+            <h3>座標系の説明</h3>
+            <div class="axis-legend">
+                <div class="axis-color x"></div>
+                <span>X軸（赤）</span>
+            </div>
+            <div class="axis-legend">
+                <div class="axis-color y"></div>
+                <span>Y軸（緑）</span>
+            </div>
+            <div class="axis-legend">
+                <div class="axis-color z"></div>
+                <span>Z軸（青）</span>
+            </div>
+            <div class="axis-legend">
+                <div class="axis-color link"></div>
+                <span>リンク</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="control-panel">
+        <h2>DHパラメータ設定</h2>
+        
+        <div class="axis-controls">
+            <button id="add-axis-button">軸を追加</button>
+            <button id="remove-axis-button">軸を削除</button>
+        </div>
+        
+        <div id="axes-container">
+            <!-- 軸のパラメータコントロールがここに動的に追加される -->
+        </div>
+
+        <div class="dh-info">
+            <h3>DH変換の順序</h3>
+            <ol>
+                <li>Z軸周りにθ回転</li>
+                <li>Z軸方向にd平行移動</li>
+                <li>X軸方向にa平行移動</li>
+                <li>X軸周りにα回転</li>
+            </ol>
+        </div>
+
+        <button id="reset-button">パラメータをリセット</button>
+
+        <div class="controls-info">
+            <h3>操作方法</h3>
+            <div>マウスドラッグ: 視点回転</div>
+            <div>マウスホイール: ズーム</div>
+        </div>
+    </div>
+
+    <script>
+        // グローバル変数
+        let scene, camera, renderer;
+        let frames = [];
+        let links = [];
+        let dhAxes = [
+            {
+                id: 0,
+                params: { a: 2.0, alpha: 0.0, d: 1.0, theta: 0.0 }
+            }
+        ];
+
+        // カメラコントロール用変数
+        let isMouseDown = false;
+        let mouseX = 0, mouseY = 0;
+        let cameraRadius = 8;
+        let cameraTheta = Math.PI / 4;
+        let cameraPhi = Math.PI / 4;
+
+        // 座標系を作成する関数
+        function createCoordinateFrame(size = 1) {
+            const group = new THREE.Group();
+            
+            // X軸（赤）
+            const xGeometry = new THREE.CylinderGeometry(0.02, 0.02, size);
+            const xMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const xAxis = new THREE.Mesh(xGeometry, xMaterial);
+            xAxis.rotation.z = -Math.PI / 2;
+            xAxis.position.x = size / 2;
+            group.add(xAxis);
+            
+            // X軸の矢印
+            const xArrowGeometry = new THREE.ConeGeometry(0.05, 0.2);
+            const xArrow = new THREE.Mesh(xArrowGeometry, xMaterial);
+            xArrow.rotation.z = -Math.PI / 2;
+            xArrow.position.x = size + 0.1;
+            group.add(xArrow);
+            
+            // Y軸（緑）
+            const yGeometry = new THREE.CylinderGeometry(0.02, 0.02, size);
+            const yMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+            const yAxis = new THREE.Mesh(yGeometry, yMaterial);
+            yAxis.position.y = size / 2;
+            group.add(yAxis);
+            
+            // Y軸の矢印
+            const yArrowGeometry = new THREE.ConeGeometry(0.05, 0.2);
+            const yArrow = new THREE.Mesh(yArrowGeometry, yMaterial);
+            yArrow.position.y = size + 0.1;
+            group.add(yArrow);
+            
+            // Z軸（青）
+            const zGeometry = new THREE.CylinderGeometry(0.02, 0.02, size);
+            const zMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+            const zAxis = new THREE.Mesh(zGeometry, zMaterial);
+            zAxis.rotation.x = Math.PI / 2;
+            zAxis.position.z = size / 2;
+            group.add(zAxis);
+            
+            // Z軸の矢印
+            const zArrowGeometry = new THREE.ConeGeometry(0.05, 0.2);
+            const zArrow = new THREE.Mesh(zArrowGeometry, zMaterial);
+            zArrow.rotation.x = Math.PI / 2;
+            zArrow.position.z = size + 0.1;
+            group.add(zArrow);
+            
+            return group;
+        }
+
+        // リンクを作成する関数（2つの座標系間を接続）
+        function createLink(startPos, endPos) {
+            const direction = new THREE.Vector3().subVectors(endPos, startPos);
+            const length = direction.length();
+            
+            if (length < 0.01) return null; // 長さが極小の場合はリンクを作成しない
+            
+            const geometry = new THREE.CylinderGeometry(0.05, 0.05, length);
+            const material = new THREE.MeshBasicMaterial({ 
+                color: 0x888888, 
+                transparent: true, 
+                opacity: 0.7 
+            });
+            const linkMesh = new THREE.Mesh(geometry, material);
+            
+            // リンクの位置を中点に設定
+            linkMesh.position.copy(startPos).add(endPos).multiplyScalar(0.5);
+            
+            // リンクの向きを設定
+            linkMesh.lookAt(endPos);
+            linkMesh.rotateX(Math.PI / 2);
+            
+            return linkMesh;
+        }
+
+        // DHパラメータに基づく変換行列を計算
+        function calculateDHTransform(a, alpha, d, theta) {
+            const alphaRad = alpha * Math.PI / 180;
+            const thetaRad = theta * Math.PI / 180;
+            
+            const cosTheta = Math.cos(thetaRad);
+            const sinTheta = Math.sin(thetaRad);
+            const cosAlpha = Math.cos(alphaRad);
+            const sinAlpha = Math.sin(alphaRad);
+            
+            // DH変換行列
+            const matrix = new THREE.Matrix4();
+            matrix.set(
+                cosTheta, -sinTheta * cosAlpha,  sinTheta * sinAlpha, a * cosTheta,
+                sinTheta,  cosTheta * cosAlpha, -cosTheta * sinAlpha, a * sinTheta,
+                0,         sinAlpha,             cosAlpha,            d,
+                0,         0,                    0,                   1
+            );
+            
+            return matrix;
+        }
+
+        // シーンを更新する関数
+        function updateScene() {
+            // 既存のフレームとリンクを削除
+            frames.forEach(frame => scene.remove(frame));
+            links.forEach(link => scene.remove(link));
+            frames = [];
+            links = [];
+            
+            // 基準座標系を追加
+            const baseFrame = createCoordinateFrame(1.5);
+            scene.add(baseFrame);
+            frames.push(baseFrame);
+            
+            // 各軸の変換を順次適用
+            let currentTransform = new THREE.Matrix4();
+            let framePositions = [new THREE.Vector3(0, 0, 0)]; // 基準座標系の位置
+            
+            dhAxes.forEach((axis, index) => {
+                const { a, alpha, d, theta } = axis.params;
+                
+                // 現在の軸の変換を計算して累積
+                const dhTransform = calculateDHTransform(a, alpha, d, theta);
+                currentTransform = currentTransform.clone().multiply(dhTransform);
+                
+                // 新しい座標系を作成して変換を適用
+                const frame = createCoordinateFrame(1.5);
+                frame.matrix.copy(currentTransform);
+                frame.matrixAutoUpdate = false;
+                scene.add(frame);
+                frames.push(frame);
+                
+                // 新しい座標系の位置を取得
+                const framePosition = new THREE.Vector3();
+                framePosition.setFromMatrixPosition(currentTransform);
+                framePositions.push(framePosition);
+                
+                // 前の座標系と現在の座標系を接続するリンクを作成
+                const link = createLink(framePositions[index], framePositions[index + 1]);
+                if (link) {
+                    scene.add(link);
+                    links.push(link);
+                }
+            });
+        }
+
+        // カメラ位置を更新
+        function updateCamera() {
+            camera.position.x = cameraRadius * Math.sin(cameraPhi) * Math.cos(cameraTheta);
+            camera.position.y = cameraRadius * Math.cos(cameraPhi);
+            camera.position.z = cameraRadius * Math.sin(cameraPhi) * Math.sin(cameraTheta);
+            camera.lookAt(0, 0, 0);
+        }
+
+        // 軸のパラメータコントロールを作成
+        function createAxisControls(axis, index) {
+            const axisSection = document.createElement('div');
+            axisSection.className = 'axis-section';
+            axisSection.innerHTML = `
+                <div class="axis-header">
+                    <div class="axis-title">軸 ${index + 1}</div>
+                </div>
+                <div class="parameter-control">
+                    <label>a (リンク長): <span id="a-value-${index}">${axis.params.a.toFixed(2)}</span></label>
+                    <input type="range" id="a-slider-${index}" min="0" max="5" step="0.1" value="${axis.params.a}">
+                    <div class="parameter-description">X軸方向のリンクの長さ</div>
+                </div>
+                <div class="parameter-control">
+                    <label>α (リンクねじり角): <span id="alpha-value-${index}">${axis.params.alpha.toFixed(1)}</span>°</label>
+                    <input type="range" id="alpha-slider-${index}" min="-180" max="180" step="5" value="${axis.params.alpha}">
+                    <div class="parameter-description">X軸周りの回転角度</div>
+                </div>
+                <div class="parameter-control">
+                    <label>d (関節オフセット): <span id="d-value-${index}">${axis.params.d.toFixed(2)}</span></label>
+                    <input type="range" id="d-slider-${index}" min="-3" max="3" step="0.1" value="${axis.params.d}">
+                    <div class="parameter-description">Z軸方向の平行移動</div>
+                </div>
+                <div class="parameter-control">
+                    <label>θ (関節角度): <span id="theta-value-${index}">${axis.params.theta.toFixed(1)}</span>°</label>
+                    <input type="range" id="theta-slider-${index}" min="-180" max="180" step="5" value="${axis.params.theta}">
+                    <div class="parameter-description">Z軸周りの回転角度</div>
+                </div>
+            `;
+            return axisSection;
+        }
+        
+        // UIを更新
+        function updateUI() {
+            const container = document.getElementById('axes-container');
+            container.innerHTML = '';
+            
+            dhAxes.forEach((axis, index) => {
+                const axisControls = createAxisControls(axis, index);
+                container.appendChild(axisControls);
+            });
+            
+            // イベントリスナーを再設定
+            setupAxisEventListeners();
+        }
+        
+        // 軸を追加
+        function addAxis() {
+            const newAxis = {
+                id: dhAxes.length,
+                params: { a: 2.0, alpha: 0.0, d: 1.0, theta: 0.0 }
+            };
+            dhAxes.push(newAxis);
+            updateUI();
+            updateScene();
+        }
+        
+        // 軸を削除
+        function removeAxis() {
+            if (dhAxes.length > 1) {
+                dhAxes.pop();
+                updateUI();
+                updateScene();
+            }
+        }
+
+        // 初期化
+        function init() {
+            const container = document.getElementById('canvas-container');
+            
+            // シーンの設定
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xf0f0f0);
+
+            // カメラの設定
+            camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+            updateCamera();
+
+            // レンダラーの設定
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // ライトの設定
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 10, 5);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+
+            // グリッドの追加
+            const gridHelper = new THREE.GridHelper(10, 10, 0x888888, 0xcccccc);
+            scene.add(gridHelper);
+
+            // UIを初期化
+            updateUI();
+            
+            // 初期シーンの更新
+            updateScene();
+
+            // イベントリスナーの設定
+            setupEventListeners();
+        }
+
+        // 軸のイベントリスナーを設定
+        function setupAxisEventListeners() {
+            dhAxes.forEach((axis, index) => {
+                // aパラメータ
+                const aSlider = document.getElementById(`a-slider-${index}`);
+                if (aSlider) {
+                    aSlider.addEventListener('input', (e) => {
+                        dhAxes[index].params.a = parseFloat(e.target.value);
+                        document.getElementById(`a-value-${index}`).textContent = dhAxes[index].params.a.toFixed(2);
+                        updateScene();
+                    });
+                }
+                
+                // αパラメータ
+                const alphaSlider = document.getElementById(`alpha-slider-${index}`);
+                if (alphaSlider) {
+                    alphaSlider.addEventListener('input', (e) => {
+                        dhAxes[index].params.alpha = parseFloat(e.target.value);
+                        document.getElementById(`alpha-value-${index}`).textContent = dhAxes[index].params.alpha.toFixed(1);
+                        updateScene();
+                    });
+                }
+                
+                // dパラメータ
+                const dSlider = document.getElementById(`d-slider-${index}`);
+                if (dSlider) {
+                    dSlider.addEventListener('input', (e) => {
+                        dhAxes[index].params.d = parseFloat(e.target.value);
+                        document.getElementById(`d-value-${index}`).textContent = dhAxes[index].params.d.toFixed(2);
+                        updateScene();
+                    });
+                }
+                
+                // θパラメータ
+                const thetaSlider = document.getElementById(`theta-slider-${index}`);
+                if (thetaSlider) {
+                    thetaSlider.addEventListener('input', (e) => {
+                        dhAxes[index].params.theta = parseFloat(e.target.value);
+                        document.getElementById(`theta-value-${index}`).textContent = dhAxes[index].params.theta.toFixed(1);
+                        updateScene();
+                    });
+                }
+            });
+        }
+
+        // イベントリスナーの設定
+        function setupEventListeners() {
+            const canvas = renderer.domElement;
+
+            // マウスイベント
+            canvas.addEventListener('mousedown', (event) => {
+                isMouseDown = true;
+                mouseX = event.clientX;
+                mouseY = event.clientY;
+            });
+
+            canvas.addEventListener('mousemove', (event) => {
+                if (!isMouseDown) return;
+                
+                const deltaX = event.clientX - mouseX;
+                const deltaY = event.clientY - mouseY;
+                
+                cameraTheta += deltaX * 0.01;
+                cameraPhi -= deltaY * 0.01;
+                cameraPhi = Math.max(0.1, Math.min(Math.PI - 0.1, cameraPhi));
+                
+                updateCamera();
+                
+                mouseX = event.clientX;
+                mouseY = event.clientY;
+            });
+
+            canvas.addEventListener('mouseup', () => {
+                isMouseDown = false;
+            });
+
+            canvas.addEventListener('wheel', (event) => {
+                cameraRadius += event.deltaY * 0.01;
+                cameraRadius = Math.max(2, Math.min(20, cameraRadius));
+                updateCamera();
+            });
+
+            // 軸管理ボタン
+            document.getElementById('add-axis-button').addEventListener('click', addAxis);
+            document.getElementById('remove-axis-button').addEventListener('click', removeAxis);
+
+            // リセットボタン
+            document.getElementById('reset-button').addEventListener('click', () => {
+                dhAxes.forEach(axis => {
+                    axis.params = { a: 2.0, alpha: 0.0, d: 1.0, theta: 0.0 };
+                });
+                updateUI();
+                updateScene();
+            });
+
+            // ウィンドウリサイズ
+            window.addEventListener('resize', () => {
+                const container = document.getElementById('canvas-container');
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            });
+        }
+
+        // アニメーションループ
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+
+        // 初期化と開始
+        init();
+        animate();
+    </script>
+</body>
+</html>
